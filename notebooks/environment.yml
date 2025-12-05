@@ -1,0 +1,11 @@
+name: mister_car_wash_ml
+channels:
+  - snowflake
+  - nodefaults
+dependencies:
+  - python=3.9
+  - snowflake-snowpark-python
+  - snowflake-ml-python
+  - pandas
+  - notebook
+
