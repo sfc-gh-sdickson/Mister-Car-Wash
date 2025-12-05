@@ -1,11 +1,9 @@
 name: mister_car_wash_ml
-
 channels:
   - snowflake
-
 dependencies:
   - matplotlib=3.9.2
-  - pandas=2.3.1
+  - pandas=2.2.3
   - scikit-learn=1.6.1
   - snowflake-ml-python=*
   - xgboost=3.0.1
