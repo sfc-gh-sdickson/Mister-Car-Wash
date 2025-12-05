@@ -1,11 +1,13 @@
 name: mister_car_wash_ml
 channels:
   - snowflake
-  - nodefaults
+  - conda-forge
 dependencies:
-  - python=3.9
+  - python>=3.9,<3.12
   - snowflake-snowpark-python
   - snowflake-ml-python
   - pandas
+  - scikit-learn
+  - joblib
+  - cachetools
   - notebook
-
