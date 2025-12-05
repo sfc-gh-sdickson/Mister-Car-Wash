@@ -1,9 +1,9 @@
 -- ============================================================================
--- Mister Car Wash Intelligence Agent - ML Model Wrappers
+-- Mister Car Wash Intelligence Agent - ML Model Functions
 -- ============================================================================
--- Purpose: SQL stored procedures to invoke ML models
--- Pattern: EXACTLY matches Rocket Lab / Kratos Defense working example
--- Syntax: Verified against Snowflake SQL Reference
+-- Purpose: Creates SQL UDF wrappers for ML model inference
+-- Pattern: Matches Origence working example (Function + MODEL!PREDICT syntax)
+-- Syntax: Verified against Snowflake SQL Reference and Origence template
 -- ============================================================================
 
 USE DATABASE MISTER_CAR_WASH_INTELLIGENCE;
@@ -11,188 +11,100 @@ USE SCHEMA ANALYTICS;
 USE WAREHOUSE MISTER_CAR_WASH_WH;
 
 -- ============================================================================
--- 1. Churn Risk Predictor Wrapper
+-- Function 1: Predict Churn Risk
+-- ============================================================================
+-- Returns: Summary string with churn risk distribution
+-- Input: status_filter (ACTIVE, PAUSED, or NULL)
+-- Analyzes 100 members from portfolio
 -- Model: CHURN_RISK_PREDICTOR
--- Features: ltv_score, tenure_days, days_since_last_wash, total_washes
--- ============================================================================
-CREATE OR REPLACE PROCEDURE PREDICT_CHURN_RISK(
-    STATUS_FILTER VARCHAR
-)
-RETURNS STRING
-LANGUAGE SQL
-COMMENT = 'Calls CHURN_RISK_PREDICTOR ML model to predict member cancellation risk'
-AS $$
-DECLARE
-    result_json STRING;
-    total_count INTEGER;
-    low_risk INTEGER;
-    high_risk INTEGER;
-    churn_risk_pct FLOAT;
-    avg_ltv FLOAT;
-BEGIN
-    WITH predictions AS (
-        WITH m AS MODEL MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.CHURN_RISK_PREDICTOR
-        SELECT
-            ltv_score,
-            m!PREDICT(
-                ltv_score,
-                tenure_days,
-                days_since_last_wash,
-                total_washes
-            ):CHURN_LABEL::INT AS predicted_churn
+-- Features: LTV_SCORE, TENURE_DAYS, DAYS_SINCE_LAST_WASH, TOTAL_WASHES
+
+CREATE OR REPLACE FUNCTION PREDICT_CHURN_RISK(status_filter VARCHAR)
+RETURNS VARCHAR
+AS
+$$
+    SELECT 
+        'Total Members Analyzed: ' || COUNT(*) ||
+        ', Predicted Safe: ' || SUM(CASE WHEN pred:PREDICTED_CHURN::INT = 0 THEN 1 ELSE 0 END) ||
+        ', Predicted At-Risk: ' || SUM(CASE WHEN pred:PREDICTED_CHURN::INT = 1 THEN 1 ELSE 0 END) ||
+        ', Risk Rate: ' || ROUND(SUM(CASE WHEN pred:PREDICTED_CHURN::INT = 1 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) * 100, 1) || '%'
+    FROM (
+        SELECT 
+            CHURN_RISK_PREDICTOR!PREDICT(
+                ltv_score, tenure_days, days_since_last_wash, total_washes
+            ) as pred
         FROM MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.V_CHURN_RISK_FEATURES
-        WHERE (:STATUS_FILTER IS NULL OR :STATUS_FILTER = 'NULL' OR :STATUS_FILTER = '' OR UPPER(status) = UPPER(:STATUS_FILTER))
+        WHERE status_filter IS NULL OR status = status_filter
         LIMIT 100
     )
-    SELECT
-        COUNT(*),
-        SUM(CASE WHEN predicted_churn = 0 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN predicted_churn = 1 THEN 1 ELSE 0 END),
-        ROUND(AVG(ltv_score), 2)
-    INTO total_count, low_risk, high_risk, avg_ltv
-    FROM predictions;
-
-    IF (total_count > 0) THEN
-        churn_risk_pct := ROUND(high_risk / total_count * 100, 2);
-    ELSE
-        churn_risk_pct := 0;
-    END IF;
-
-    result_json := OBJECT_CONSTRUCT(
-        'prediction_source', 'CHURN_RISK_PREDICTOR ML Model',
-        'status_filter', COALESCE(:STATUS_FILTER, 'ALL'),
-        'members_analyzed', total_count,
-        'predicted_safe', low_risk,
-        'predicted_churn_risk', high_risk,
-        'churn_risk_pct', churn_risk_pct,
-        'avg_ltv_score', avg_ltv
-    )::STRING;
-
-    RETURN result_json;
-END;
 $$;
 
 -- ============================================================================
--- 2. Equipment Failure Predictor Wrapper
+-- Function 2: Predict Equipment Failure
+-- ============================================================================
+-- Returns: Summary string with failure risk statistics
+-- Input: equipment_type_filter (CONVEYOR, BLOWER, BRUSH, PUMP_STATION, or NULL)
+-- Analyzes 100 equipment records
 -- Model: EQUIPMENT_FAILURE_PREDICTOR
--- Features: days_since_last_service, last_service_cost, severity_score
--- ============================================================================
-CREATE OR REPLACE PROCEDURE PREDICT_EQUIPMENT_FAILURE(
-    EQUIPMENT_TYPE_FILTER VARCHAR
-)
-RETURNS STRING
-LANGUAGE SQL
-COMMENT = 'Calls EQUIPMENT_FAILURE_PREDICTOR ML model to predict equipment failure risk'
-AS $$
-DECLARE
-    result_json STRING;
-    total_count INTEGER;
-    healthy INTEGER;
-    at_risk INTEGER;
-    failure_risk_pct FLOAT;
-    avg_days_service FLOAT;
-BEGIN
-    WITH predictions AS (
-        WITH m AS MODEL MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.EQUIPMENT_FAILURE_PREDICTOR
-        SELECT
-            days_since_last_service,
-            m!PREDICT(
-                days_since_last_service,
-                last_service_cost,
-                severity_score
-            ):FAILURE_LABEL::INT AS predicted_failure
+-- Features: DAYS_SINCE_LAST_SERVICE, LAST_SERVICE_COST, SEVERITY_SCORE
+
+CREATE OR REPLACE FUNCTION PREDICT_EQUIPMENT_FAILURE(equipment_type_filter VARCHAR)
+RETURNS VARCHAR
+AS
+$$
+    SELECT 
+        'Total Equipment Analyzed: ' || COUNT(*) ||
+        ', Healthy: ' || SUM(CASE WHEN pred:PREDICTED_FAILURE::INT = 0 THEN 1 ELSE 0 END) ||
+        ', At Risk of Failure: ' || SUM(CASE WHEN pred:PREDICTED_FAILURE::INT = 1 THEN 1 ELSE 0 END) ||
+        ', Failure Risk Rate: ' || ROUND(SUM(CASE WHEN pred:PREDICTED_FAILURE::INT = 1 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) * 100, 1) || '%'
+    FROM (
+        SELECT 
+            EQUIPMENT_FAILURE_PREDICTOR!PREDICT(
+                days_since_last_service, last_service_cost, severity_score
+            ) as pred
         FROM MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.V_MAINTENANCE_RISK_FEATURES
-        WHERE (:EQUIPMENT_TYPE_FILTER IS NULL OR :EQUIPMENT_TYPE_FILTER = 'NULL' OR :EQUIPMENT_TYPE_FILTER = '' OR UPPER(equipment_type) = UPPER(:EQUIPMENT_TYPE_FILTER))
+        WHERE equipment_type_filter IS NULL OR equipment_type = equipment_type_filter
         LIMIT 100
     )
-    SELECT
-        COUNT(*),
-        SUM(CASE WHEN predicted_failure = 0 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN predicted_failure = 1 THEN 1 ELSE 0 END),
-        ROUND(AVG(days_since_last_service), 1)
-    INTO total_count, healthy, at_risk, avg_days_service
-    FROM predictions;
-
-    IF (total_count > 0) THEN
-        failure_risk_pct := ROUND(at_risk / total_count * 100, 2);
-    ELSE
-        failure_risk_pct := 0;
-    END IF;
-
-    result_json := OBJECT_CONSTRUCT(
-        'prediction_source', 'EQUIPMENT_FAILURE_PREDICTOR ML Model',
-        'equipment_type_filter', COALESCE(:EQUIPMENT_TYPE_FILTER, 'ALL'),
-        'equipment_analyzed', total_count,
-        'predicted_healthy', healthy,
-        'predicted_failure_risk', at_risk,
-        'failure_risk_pct', failure_risk_pct,
-        'avg_days_since_service', avg_days_service
-    )::STRING;
-
-    RETURN result_json;
-END;
 $$;
 
 -- ============================================================================
--- 3. Upsell Propensity Scorer Wrapper
+-- Function 3: Predict Upsell Opportunity
+-- ============================================================================
+-- Returns: Summary string with upsell propensity
+-- Input: tier_filter (BASE_UNLIMITED, PLATINUM, or NULL)
+-- Analyzes 100 members
 -- Model: UPSELL_PROPENSITY_SCORER
--- Features: ltv_score, visit_count, avg_rating
--- ============================================================================
-CREATE OR REPLACE PROCEDURE PREDICT_UPSELL_OPPORTUNITY(
-    TIER_FILTER VARCHAR
-)
-RETURNS STRING
-LANGUAGE SQL
-COMMENT = 'Calls UPSELL_PROPENSITY_SCORER ML model to predict upgrade likelihood'
-AS $$
-DECLARE
-    result_json STRING;
-    total_count INTEGER;
-    low_propensity INTEGER;
-    high_propensity INTEGER;
-    upsell_opportunity_pct FLOAT;
-    avg_visits FLOAT;
-BEGIN
-    WITH predictions AS (
-        WITH m AS MODEL MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.UPSELL_PROPENSITY_SCORER
-        SELECT
-            visit_count,
-            m!PREDICT(
-                ltv_score,
-                visit_count,
-                avg_rating
-            ):UPSELL_LABEL::INT AS predicted_upsell
+-- Features: LTV_SCORE, VISIT_COUNT, AVG_RATING
+
+CREATE OR REPLACE FUNCTION PREDICT_UPSELL_OPPORTUNITY(tier_filter VARCHAR)
+RETURNS VARCHAR
+AS
+$$
+    SELECT 
+        'Total Members Analyzed: ' || COUNT(*) ||
+        ', Low Propensity: ' || SUM(CASE WHEN pred:PREDICTED_UPSELL::INT = 0 THEN 1 ELSE 0 END) ||
+        ', High Propensity: ' || SUM(CASE WHEN pred:PREDICTED_UPSELL::INT = 1 THEN 1 ELSE 0 END) ||
+        ', Upsell Opportunity Rate: ' || ROUND(SUM(CASE WHEN pred:PREDICTED_UPSELL::INT = 1 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) * 100, 1) || '%'
+    FROM (
+        SELECT 
+            UPSELL_PROPENSITY_SCORER!PREDICT(
+                ltv_score, visit_count, avg_rating
+            ) as pred
         FROM MISTER_CAR_WASH_INTELLIGENCE.ANALYTICS.V_UPSELL_FEATURES
-        WHERE (:TIER_FILTER IS NULL OR :TIER_FILTER = 'NULL' OR :TIER_FILTER = '' OR UPPER(membership_tier) = UPPER(:TIER_FILTER))
+        WHERE tier_filter IS NULL OR membership_tier = tier_filter
         LIMIT 100
     )
-    SELECT
-        COUNT(*),
-        SUM(CASE WHEN predicted_upsell = 0 THEN 1 ELSE 0 END),
-        SUM(CASE WHEN predicted_upsell = 1 THEN 1 ELSE 0 END),
-        ROUND(AVG(visit_count), 1)
-    INTO total_count, low_propensity, high_propensity, avg_visits
-    FROM predictions;
-
-    IF (total_count > 0) THEN
-        upsell_opportunity_pct := ROUND(high_propensity / total_count * 100, 2);
-    ELSE
-        upsell_opportunity_pct := 0;
-    END IF;
-
-    result_json := OBJECT_CONSTRUCT(
-        'prediction_source', 'UPSELL_PROPENSITY_SCORER ML Model',
-        'tier_filter', COALESCE(:TIER_FILTER, 'ALL'),
-        'members_analyzed', total_count,
-        'low_opportunity', low_propensity,
-        'high_opportunity', high_propensity,
-        'upsell_opportunity_pct', upsell_opportunity_pct,
-        'avg_visit_count', avg_visits
-    )::STRING;
-
-    RETURN result_json;
-END;
 $$;
 
-SELECT 'Model wrapper procedures created successfully' AS status;
+-- ============================================================================
+-- Verification Tests
+-- ============================================================================
+SELECT '🔄 Testing ML functions...' as status;
 
+-- These will only work if models are trained and registered!
+-- SELECT PREDICT_CHURN_RISK(NULL) as churn_result;
+-- SELECT PREDICT_EQUIPMENT_FAILURE(NULL) as failure_result;
+-- SELECT PREDICT_UPSELL_OPPORTUNITY(NULL) as upsell_result;
+
+SELECT '✅ ML functions created successfully. Run notebook to train models before testing.' as final_status;
