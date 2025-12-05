@@ -103,7 +103,7 @@ SELECT
     COUNT(t.transaction_id) AS visit_count,
     COALESCE(AVG(f.rating), 3.0) AS avg_rating, -- Handle NULLs
     CASE 
-        WHEN m.membership_tier != 'TITANIUM' AND m.ltv_score > 1000 THEN 1
+        WHEN m.membership_tier != 'TITANIUM' AND m.ltv_score > 150 THEN 1
         ELSE 0 
     END AS upsell_label
 FROM MISTER_CAR_WASH_INTELLIGENCE.RAW.MEMBERS m
