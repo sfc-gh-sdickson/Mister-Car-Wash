@@ -29,11 +29,16 @@ CREATE OR REPLACE SEMANTIC VIEW SV_MEMBER_INTELLIGENCE
     feedback AS RAW.CUSTOMER_FEEDBACK
       PRIMARY KEY (feedback_id)
       WITH SYNONYMS ('reviews', 'ratings', 'comments')
-      COMMENT = 'Customer feedback and ratings'
+      COMMENT = 'Customer feedback and ratings',
+    locations AS RAW.LOCATIONS
+      PRIMARY KEY (location_id)
+      WITH SYNONYMS ('stores', 'sites', 'shops')
+      COMMENT = 'Wash location details linked to transactions'
   )
   RELATIONSHIPS (
     transactions(member_id) REFERENCES members(member_id),
-    feedback(member_id) REFERENCES members(member_id)
+    feedback(member_id) REFERENCES members(member_id),
+    transactions(location_id) REFERENCES locations(location_id)
   )
   DIMENSIONS (
     -- Member dimensions
@@ -73,7 +78,18 @@ CREATE OR REPLACE SEMANTIC VIEW SV_MEMBER_INTELLIGENCE
       COMMENT = 'Date of visit for feedback',
     feedback.sentiment AS sentiment_label
       WITH SYNONYMS ('feeling', 'sentiment')
-      COMMENT = 'Sentiment: POSITIVE, NEUTRAL, NEGATIVE'
+      COMMENT = 'Sentiment: POSITIVE, NEUTRAL, NEGATIVE',
+
+    -- Location dimensions (Linked via transactions)
+    locations.city AS city
+      WITH SYNONYMS ('town', 'location city')
+      COMMENT = 'City where wash occurred',
+    locations.state AS state
+      WITH SYNONYMS ('province', 'location state')
+      COMMENT = 'State where wash occurred',
+    locations.region AS region
+      WITH SYNONYMS ('area', 'zone')
+      COMMENT = 'Region: WEST, SOUTH, SOUTHEAST'
   )
   METRICS (
     -- Member metrics
@@ -177,4 +193,3 @@ CREATE OR REPLACE SEMANTIC VIEW SV_OPERATIONAL_INTELLIGENCE
   COMMENT = 'Operational Intelligence - view of store performance and equipment health';
 
 SELECT 'All semantic views created successfully' AS status;
-
