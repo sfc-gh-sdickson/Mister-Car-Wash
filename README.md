@@ -1,3 +1,5 @@
+<img src="Snowflake_Logo.svg" width="200">
+
 # Mister Car Wash Intelligence Agent
 
 A Snowflake Intelligence solution tailored for Mister Car Wash business operations, featuring Cortex Analyst (Structured Data), Cortex Search (Unstructured Data), and Machine Learning (Predictive Analytics).
