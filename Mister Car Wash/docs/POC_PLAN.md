@@ -1,4 +1,4 @@
-<img src="../Snowflake_Logo.svg" width="200">
+<img src="../../Snowflake_Logo.svg" width="200">
 
 # Mister Car Wash - Snowflake Migration POC Plan
 
