@@ -11,6 +11,13 @@ USE SCHEMA ANALYTICS;
 USE WAREHOUSE MISTER_CAR_WASH_WH;
 
 -- ============================================================================
+-- CLEANUP: Drop old Stored Procedures if they exist to avoid conflicts
+-- ============================================================================
+DROP PROCEDURE IF EXISTS PREDICT_CHURN_RISK(VARCHAR);
+DROP PROCEDURE IF EXISTS PREDICT_EQUIPMENT_FAILURE(VARCHAR);
+DROP PROCEDURE IF EXISTS PREDICT_UPSELL_OPPORTUNITY(VARCHAR);
+
+-- ============================================================================
 -- Function 1: Predict Churn Risk
 -- ============================================================================
 -- Returns: Summary string with churn risk distribution
